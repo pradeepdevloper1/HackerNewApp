@@ -1,3 +1,10 @@
+1. run script npm intall before running 
+2. make sure angular cli version 19 is installed 
+3. nvm use 22.14.0
+4. Run this Angular app HAckerNewsApp on port 4200      ng serve -o --port 4200
+5. make sure HAckeNewsApi should be run on port 7288
+
+
 # HackerNewsApp
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 19.2.3.
