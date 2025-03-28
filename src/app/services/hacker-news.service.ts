@@ -16,6 +16,9 @@ export class HackerNewsService {
 
   constructor(private http: HttpClient) { }
 
+  getTopStories(count: number): Observable<Story[]> {
+    return this.http.get<Story[]>(`${this.apiUrl}/top?count=${count}`);
+  }
   getNewStories(page: number, pageSize: number): Observable<Story[]> {
     return this.http.get<Story[]>(`${this.apiUrl}/new?page=${page}&pageSize=${pageSize}`);
   }

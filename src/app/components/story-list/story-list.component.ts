@@ -1,80 +1,92 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, signal, inject } from '@angular/core';
+import { CommonModule, NgIf, NgFor } from '@angular/common';
 import { HackerNewsService, Story } from '../../services/hacker-news.service';
-import { CommonModule } from '@angular/common';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { FormControl, FormsModule } from '@angular/forms';
-import {
-  debounceTime,
-  distinctUntilChanged,
-  switchMap,
-  BehaviorSubject,
-  Observable,
-  of,
-  tap,
-} from 'rxjs';
+import { MatTableModule } from '@angular/material/table';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { SearchBoxComponent } from '../search-box/search-box.component';
+import { LoaderComponent } from '../loader/loader.component';
+import { NotFoundComponent } from '../../pages/not-found/not-found.component';
+import { catchError, finalize, of } from 'rxjs';
+import { PaginatorComponent } from '../paginator/paginator.component';
 
 @Component({
   selector: 'app-story-list',
-  imports: [CommonModule, MatProgressSpinnerModule, FormsModule],
+  standalone: true,
+  imports: [
+    CommonModule,
+    MatTableModule,
+    MatPaginatorModule,
+    SearchBoxComponent,
+    LoaderComponent,
+    NotFoundComponent,
+    PaginatorComponent
+  ],
   templateUrl: './story-list.component.html',
-  styleUrl: './story-list.component.css',
+  styleUrls: ['./story-list.component.css']
 })
-export class StoryListComponent implements OnInit {
-  stories$: Observable<Story[]> = of([]);
-  loading$ = new BehaviorSubject<boolean>(false);
-  page = 1;
+export class StoryListComponent {
+  private hackerNewsService = inject(HackerNewsService);
+
+  // State signals
+  stories = signal<Story[]>([]);
+  filteredStories = signal<Story[]>([]);
+  loading = signal(false);
+  error = signal<string | null>(null);
+  searchQuery = signal('');
+
+  // Pagination
   pageSize = 10;
-  searchQuery = '';
-  searchControl = new FormControl('');
-  constructor(private hackerNewsService: HackerNewsService) {}
+  currentPage = 0;
+  totalStories = signal(0);
 
   ngOnInit() {
     this.loadStories();
-    this.searchControl.valueChanges
-      .pipe(
-        debounceTime(3000), // Wait for 3000ms after the user stops typing
-        distinctUntilChanged(), // Only emit if the value has changed
-        tap(() => (this.page = 1)), // Reset to the first page when searching
-        switchMap((query) => {
-          this.searchQuery = query || '';
-          return this.hackerNewsService.searchStories(
-            this.searchQuery,
-            this.page,
-            this.pageSize
-          );
-        })
-      )
-      .subscribe((res) => {
-        this.stories$ = of(res);
-        console.log(res);
-      });
-  }
-  openLink(url: string) {
-    if (url) {
-      window.open(url, '_blank');
-    }
-  }
-  loadStories() {
-    this.loading$.next(true);
-    this.stories$ = this.hackerNewsService
-      .getNewStories(this.page, this.pageSize)
-      .pipe(tap(() => this.loading$.next(false)));
-    console.log(this.stories$.subscribe((res) => console.log(res)));
-  }
-  onSearch() {
-    if (!this.searchQuery.length) {
-      this.loadStories();
-    } else {
-      this.searchControl.setValue(this.searchQuery);
-    }
-  }
-  nextPage() {
-    this.page++;
-    this.loadStories();
   }
 
-  prevPage() {
-    this.page--;
-    this.loadStories();
+  onSearch(query: string) {
+    this.searchQuery.set(query);
+    this.currentPage = 0; // Reset to first page when searching
+    
+    if (!query) {
+      this.filteredStories.set(this.stories());
+      this.totalStories.set(this.stories().length);
+      return;
+    }
+
+    const filtered = this.stories().filter(story =>
+      story.title.toLowerCase().includes(query.toLowerCase())
+    );
+    
+    this.filteredStories.set(filtered);
+    this.totalStories.set(filtered.length);
+  }
+
+  loadStories() {
+    this.loading.set(true);
+    this.error.set(null);
+    
+    this.hackerNewsService.getTopStories(100)
+      .pipe(
+        finalize(() => this.loading.set(false)),
+        catchError(err => {
+          this.error.set('Failed to load stories. Please try again later.');
+          return of([]);
+        })
+      )
+      .subscribe(stories => {
+        this.stories.set(stories);
+        this.filteredStories.set(stories);
+        this.totalStories.set(stories.length);
+      });
+  }
+
+  onPageChange(event: PageEvent) {
+    this.currentPage = event.pageIndex;
+    this.pageSize = event.pageSize;
+  }
+
+  get paginatedStories() {
+    const start = this.currentPage * this.pageSize;
+    return this.filteredStories().slice(start, start + this.pageSize);
   }
 }
